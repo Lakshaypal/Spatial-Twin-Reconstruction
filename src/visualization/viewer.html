@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reconstruction Viewer — Professional 3D Inspector</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0b1120;--panel:rgba(13,20,38,0.92);--card:rgba(20,30,55,0.7);
+  --border:rgba(100,140,200,0.1);--border-hi:rgba(96,165,250,0.35);
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
+  --accent:#3b82f6;--glow:rgba(59,130,246,0.2);
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--purple:#a78bfa;
+  --r:8px;--t:0.2s cubic-bezier(.4,0,.2,1);
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh}
+#canvas-box{position:absolute;inset:0}
+
+/* ── Top Bar ── */
+#top{position:fixed;top:0;left:0;right:0;height:44px;background:var(--panel);backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;z-index:100;gap:10px}
+#top .logo{font-weight:700;font-size:13px;color:var(--accent);letter-spacing:-.3px}
+#top .sep{width:1px;height:18px;background:var(--border)}
+#mesh-info{font-size:11px;color:var(--text2);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#mesh-info b{color:var(--green);font-weight:600}
+
+/* ── Panel ── */
+#panel{position:fixed;top:52px;left:8px;width:232px;max-height:calc(100vh - 60px);overflow-y:auto;
+  background:var(--panel);backdrop-filter:blur(24px);border:1px solid var(--border);border-radius:10px;
+  z-index:90;padding:6px}
+#panel::-webkit-scrollbar{width:3px}
+#panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.sec{margin-bottom:2px}
+.sec-h{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:var(--text3);padding:8px 8px 3px}
+.hr{border:none;border-top:1px solid var(--border);margin:6px 0}
+
+/* ── Buttons ── */
+.mb,.tb,.pb{display:flex;align-items:center;gap:7px;width:100%;padding:6px 8px;background:0;
+  border:1px solid transparent;border-radius:var(--r);color:var(--text2);font:inherit;font-size:11px;
+  cursor:pointer;transition:all var(--t);text-align:left}
+.mb:hover,.tb:hover,.pb:hover{background:var(--glow);color:var(--text)}
+.mb.active{background:rgba(59,130,246,.13);border-color:var(--border-hi);color:var(--text)}
+.mb .d{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.mb .sz{margin-left:auto;font-size:9px;color:var(--text3)}
+
+/* ── Toggles ── */
+.tb .sw{width:26px;height:13px;border-radius:7px;background:var(--card);border:1px solid var(--border);
+  position:relative;flex-shrink:0;transition:all var(--t);margin-left:auto}
+.tb .sw::after{content:'';position:absolute;width:9px;height:9px;border-radius:50%;background:var(--text3);
+  top:1px;left:1px;transition:all var(--t)}
+.tb.on .sw{background:var(--accent);border-color:var(--accent)}
+.tb.on .sw::after{background:#fff;left:14px}
+
+/* ── Preset Grid ── */
+.pg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:0 2px}
+.pb{justify-content:center;padding:5px 2px;font-size:10px;border:1px solid var(--border);background:var(--card)}
+.pb:hover{border-color:var(--border-hi)}
+
+/* ── Slider ── */
+.slider-row{display:flex;align-items:center;gap:6px;padding:3px 8px}
+.slider-row label{font-size:10px;color:var(--text3);width:50px;flex-shrink:0}
+.slider-row input[type=range]{flex:1;-webkit-appearance:none;height:3px;background:var(--card);
+  border-radius:2px;outline:none}
+.slider-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;
+  border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 0 6px var(--glow)}
+.slider-row .val{font-size:9px;color:var(--text3);width:32px;text-align:right}
+
+/* ── Background Presets ── */
+.bg-row{display:flex;gap:4px;padding:4px 8px;flex-wrap:wrap}
+.bg-swatch{width:22px;height:22px;border-radius:5px;border:2px solid transparent;cursor:pointer;transition:all var(--t)}
+.bg-swatch:hover,.bg-swatch.active{border-color:var(--accent);transform:scale(1.1)}
+
+/* ── Stats ── */
+#stats{padding:4px 8px;font-size:10px;color:var(--text3);line-height:1.6}
+#stats b{color:var(--text2);font-weight:500}
+
+/* ── Overlays ── */
+#load-ov{position:fixed;inset:0;background:rgba(8,14,28,0.96);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;z-index:200;transition:opacity .4s}
+#load-ov.hide{opacity:0;pointer-events:none}
+.spin{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .7s linear infinite;margin-bottom:14px}
+@keyframes sp{to{transform:rotate(360deg)}}
+#load-txt{font-size:12px;color:var(--text2)}
+#load-bar-wrap{width:180px;height:3px;background:var(--card);border-radius:2px;margin-top:10px;overflow:hidden}
+#load-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--purple));width:0%;transition:width .2s}
+#load-sub{font-size:10px;color:var(--text3);margin-top:8px}
+
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(70px);background:var(--panel);
+  backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--r);padding:8px 18px;
+  font-size:11px;color:var(--text2);z-index:150;transition:transform .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+#toast.show{transform:translateX(-50%) translateY(0)}
+
+#fs-btn{position:fixed;bottom:10px;right:10px;width:32px;height:32px;background:var(--panel);
+  backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:var(--r);color:var(--text2);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:90;font-size:14px;transition:all var(--t)}
+#fs-btn:hover{border-color:var(--border-hi);color:var(--text)}
+</style>
+</head>
+<body>
+
+<div id="load-ov">
+  <div class="spin"></div>
+  <div id="load-txt">Initializing...</div>
+  <div id="load-bar-wrap"><div id="load-bar"></div></div>
+  <div id="load-sub"></div>
+</div>
+
+<div id="top">
+  <span class="logo">&#9670; RECON VIEWER</span><span class="sep"></span>
+  <span id="mesh-info">Select a mesh to begin</span>
+</div>
+
+<div id="panel">
+  <div class="sec">
+    <div class="sec-h">Chunk Meshes</div>
+    <button class="mb" data-id="corridor" data-path="/chunks/corridor/mesh_corridor.ply"><span class="d" style="background:#3b82f6"></span>Corridor<span class="sz">108 MB</span></button>
+    <button class="mb" data-id="outdoor" data-path="/chunks/outdoor/mesh_outdoor.ply"><span class="d" style="background:#22c55e"></span>Outdoor<span class="sz">317 MB</span></button>
+    <button class="mb" data-id="lab" data-path="/chunks/lab/mesh_lab.ply"><span class="d" style="background:#f59e0b"></span>Lab<span class="sz">162 MB</span></button>
+    <button class="mb" data-id="interiorB" data-path="/chunks/interiorB/mesh_interiorB.ply"><span class="d" style="background:#a78bfa"></span>Interior B<span class="sz">14 MB</span></button>
+    <button class="mb" data-id="combined" data-path="/combined/runA_combined.ply"><span class="d" style="background:#ef4444"></span>Combined<span class="sz">439 MB</span></button>
+  </div>
+  <div class="sec">
+    <div class="sec-h">Local / Cropped</div>
+    <button class="mb" data-id="crop1" data-path="/cropped_meshes/corridor/frame_00705.ply"><span class="d" style="background:#06b6d4"></span>Corridor #1<span class="sz">52 MB</span></button>
+    <button class="mb" data-id="crop2" data-path="/cropped_meshes/corridor/frame_00745.ply"><span class="d" style="background:#06b6d4"></span>Corridor #2<span class="sz">52 MB</span></button>
+    <button class="mb" data-id="crop3" data-path="/cropped_meshes/corridor/frame_00844.ply"><span class="d" style="background:#06b6d4"></span>Corridor #3<span class="sz">16 MB</span></button>
+  </div>
+  <div class="sec">
+    <div class="sec-h">Inspection</div>
+    <button class="mb" data-id="insp_c" data-path="/inspection/corridor/_render_copy.ply"><span class="d" style="background:#d946ef"></span>Corridor (rend)<span class="sz">130 MB</span></button>
+    <button class="mb" data-id="insp_l" data-path="/inspection/lab/_render_copy.ply"><span class="d" style="background:#d946ef"></span>Lab (rend)<span class="sz">137 MB</span></button>
+  </div>
+  <hr class="hr">
+
+  <div class="sec">
+    <div class="sec-h">Camera</div>
+    <div class="pg">
+      <button class="pb" data-v="front">Front</button>
+      <button class="pb" data-v="back">Back</button>
+      <button class="pb" data-v="left">Left</button>
+      <button class="pb" data-v="right">Right</button>
+      <button class="pb" data-v="top">Top</button>
+      <button class="pb" data-v="bottom">Bottom</button>
+      <button class="pb" data-v="iso">Isometric</button>
+      <button class="pb" data-v="bird">Bird's Eye</button>
+      <button class="pb" data-v="closeup">Close-up</button>
+      <button class="pb" data-v="fit">Fit Model</button>
+      <button class="pb" data-v="reset">&#10227; Reset</button>
+      <button class="pb" data-v="45deg">45&#176;</button>
+    </div>
+  </div>
+  <hr class="hr">
+
+  <div class="sec">
+    <div class="sec-h">Display</div>
+    <button class="tb on" data-t="mesh">Mesh<span class="sw"></span></button>
+    <button class="tb" data-t="points">Point Cloud<span class="sw"></span></button>
+    <button class="tb on" data-t="vcol">Vertex Colors<span class="sw"></span></button>
+    <button class="tb" data-t="wire">Wireframe<span class="sw"></span></button>
+    <button class="tb" data-t="normals">Normals<span class="sw"></span></button>
+    <button class="tb" data-t="bbox">Bounding Box<span class="sw"></span></button>
+    <button class="tb on" data-t="grid">Grid<span class="sw"></span></button>
+    <button class="tb" data-t="frags">Fragments<span class="sw"></span></button>
+  </div>
+  <hr class="hr">
+
+  <div class="sec">
+    <div class="sec-h">Rendering</div>
+    <button class="tb on" data-t="lighting">Studio Lighting<span class="sw"></span></button>
+    <button class="tb on" data-t="ssao">SSAO<span class="sw"></span></button>
+    <button class="tb on" data-t="fxaa">FXAA<span class="sw"></span></button>
+  </div>
+  <hr class="hr">
+
+  <div class="sec">
+    <div class="sec-h">Cross-Section</div>
+    <button class="tb" data-t="clip">Enable<span class="sw"></span></button>
+    <div class="slider-row" id="clip-row" style="opacity:.4;pointer-events:none">
+      <label>Y Plane</label>
+      <input type="range" id="clip-slider" min="0" max="100" value="100" step="0.1">
+      <span class="val" id="clip-val">--</span>
+    </div>
+  </div>
+  <hr class="hr">
+
+  <div class="sec">
+    <div class="sec-h">Background</div>
+    <div class="bg-row">
+      <div class="bg-swatch active" data-bg="gradient" style="background:linear-gradient(#1a2035,#080c14)" title="Gradient"></div>
+      <div class="bg-swatch" data-bg="#0a0e17" style="background:#0a0e17" title="Black"></div>
+      <div class="bg-swatch" data-bg="#1e293b" style="background:#1e293b" title="Slate"></div>
+      <div class="bg-swatch" data-bg="#27272a" style="background:#27272a" title="Zinc"></div>
+      <div class="bg-swatch" data-bg="#f8fafc" style="background:#f8fafc;border:1px solid #ccc" title="White"></div>
+      <div class="bg-swatch" data-bg="#172554" style="background:#172554" title="Navy"></div>
+    </div>
+  </div>
+  <hr class="hr">
+
+  <div class="sec">
+    <div class="sec-h">Info</div>
+    <div id="stats">Load a mesh to see stats.</div>
+  </div>
+</div>
+
+<button id="fs-btn" title="Fullscreen">&#9974;</button>
+<div id="toast"></div>
+<div id="canvas-box"></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"}}
+</script>
+<script type="module">
+import*as THREE from'three';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+import{PLYLoader}from'three/addons/loaders/PLYLoader.js';
+import{EffectComposer}from'three/addons/postprocessing/EffectComposer.js';
+import{RenderPass}from'three/addons/postprocessing/RenderPass.js';
+import{SSAOPass}from'three/addons/postprocessing/SSAOPass.js';
+import{ShaderPass}from'three/addons/postprocessing/ShaderPass.js';
+import{OutputPass}from'three/addons/postprocessing/OutputPass.js';
+import{FXAAShader}from'three/addons/shaders/FXAAShader.js';
+
+/* ═══════════════ STATE ═══════════════ */
+const S={
+  mesh:true, points:false, vcol:true, wire:false, normals:false,
+  bbox:false, grid:true, frags:false, lighting:true, ssao:true,
+  fxaa:true, clip:false, curPath:null, curId:null
+};
+let scene,camera,renderer,controls,composer;
+let renderPass,ssaoPass,fxaaPass,outputPass;
+let mainMesh=null,fragMesh=null,pointCloud=null,bboxHelper=null;
+let gridHelper,groundPlane;
+let meshCenter=new THREE.Vector3(), meshRadius=1;
+let clipPlane=new THREE.Plane(new THREE.Vector3(0,-1,0),100);
+let clipMin=0,clipMax=10;
+let keyLight,fillLight,rimLight,hemiLight,ambLight;
+let normalMat,stdMat;
+
+const BASE=window.location.origin;
+
+/* ═══════════════ HELPERS ═══════════════ */
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2500)}
+function $(s){return document.querySelector(s)}
+function $$(s){return document.querySelectorAll(s)}
+
+function gradBg(t,b){
+  const c=document.createElement('canvas');c.width=2;c.height=512;
+  const x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,512);
+  g.addColorStop(0,t);g.addColorStop(1,b);x.fillStyle=g;x.fillRect(0,0,2,512);
+  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;return tex;
+}
+
+/* ═══════════════ CONNECTED COMPONENTS ═══════════════ */
+function analyzeComponents(geo){
+  if(!geo.index)return null;
+  const idx=geo.index.array, nV=geo.attributes.position.count, nF=idx.length/3;
+  const par=new Int32Array(nV), rnk=new Uint8Array(nV);
+  for(let i=0;i<nV;i++)par[i]=i;
+  function find(x){while(par[x]!==x){par[x]=par[par[x]];x=par[x]}return x}
+  function unite(a,b){a=find(a);b=find(b);if(a===b)return;
+    if(rnk[a]<rnk[b]){const t=a;a=b;b=t}par[b]=a;if(rnk[a]===rnk[b])rnk[a]++}
+  for(let i=0;i<idx.length;i+=3){unite(idx[i],idx[i+1]);unite(idx[i+1],idx[i+2])}
+  const fc=new Map();
+  for(let i=0;i<idx.length;i+=3){const r=find(idx[i]);fc.set(r,(fc.get(r)||0)+1)}
+  let bigR=-1,bigC=0;
+  for(const[r,c]of fc)if(c>bigC){bigC=c;bigR=r}
+  const mainF=[],fragF=[];
+  for(let f=0;f<nF;f++){const r=find(idx[f*3]);
+    (r===bigR||fc.get(r)>=500)?mainF.push(f):fragF.push(f)}
+  return{nComp:fc.size,bigR,bigC,nF,mainF,fragF,fc}
+}
+
+function filteredGeo(src,faces){
+  const si=src.index.array, ni=new(si.constructor)(faces.length*3);
+  for(let i=0;i<faces.length;i++){const f=faces[i];
+    ni[i*3]=si[f*3];ni[i*3+1]=si[f*3+1];ni[i*3+2]=si[f*3+2]}
+  const g=new THREE.BufferGeometry();
+  for(const n in src.attributes)g.setAttribute(n,src.attributes[n]);
+  g.setIndex(new THREE.BufferAttribute(ni,1));
+  return g;
+}
+
+function computeTrueBox(geo){
+  const box=new THREE.Box3();
+  if(!geo.index){
+    geo.computeBoundingBox();
+    return geo.boundingBox.clone();
+  }
+  const pos=geo.attributes.position, idx=geo.index.array, v=new THREE.Vector3();
+  for(let i=0;i<idx.length;i++){
+    v.fromBufferAttribute(pos,idx[i]);
+    box.expandByPoint(v);
+  }
+  return box;
+}
+
+/* ═══════════════ INIT ═══════════════ */
+function init(){
+  scene=new THREE.Scene();
+  scene.background=gradBg('#1a2035','#080c14');
+
+  camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.01,2000);
+  camera.position.set(8,6,8);
+
+  renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.15;
+  renderer.shadowMap.enabled=true;
+  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.localClippingEnabled=true;
+  $('#canvas-box').appendChild(renderer.domElement);
+
+  // Controls
+  controls=new OrbitControls(camera,renderer.domElement);
+  controls.enableDamping=true;controls.dampingFactor=0.06;
+  controls.rotateSpeed=0.5;controls.panSpeed=0.7;controls.zoomSpeed=1.0;
+  controls.minDistance=0.05;controls.maxDistance=800;
+
+  // Studio Lighting
+  ambLight=new THREE.AmbientLight(0xffffff,0.35);scene.add(ambLight);
+  hemiLight=new THREE.HemisphereLight(0xc8dcff,0x2a3040,0.5);scene.add(hemiLight);
+  keyLight=new THREE.DirectionalLight(0xfff8f0,1.2);
+  keyLight.position.set(12,20,8);keyLight.castShadow=true;
+  keyLight.shadow.mapSize.set(2048,2048);
+  const sc=35;keyLight.shadow.camera.left=-sc;keyLight.shadow.camera.right=sc;
+  keyLight.shadow.camera.top=sc;keyLight.shadow.camera.bottom=-sc;
+  keyLight.shadow.camera.near=0.5;keyLight.shadow.camera.far=120;
+  keyLight.shadow.bias=-0.0005;scene.add(keyLight);
+  fillLight=new THREE.DirectionalLight(0xc0d8ff,0.45);
+  fillLight.position.set(-10,6,-8);scene.add(fillLight);
+  rimLight=new THREE.DirectionalLight(0xffeedd,0.25);
+  rimLight.position.set(-4,10,-15);scene.add(rimLight);
+
+  // Grid
+  gridHelper=new THREE.GridHelper(120,120,0x1a3050,0x0f1a2a);
+  gridHelper.material.transparent=true;gridHelper.material.opacity=0.45;
+  scene.add(gridHelper);
+
+  // Ground shadow plane
+  const gpGeo=new THREE.PlaneGeometry(200,200);
+  groundPlane=new THREE.Mesh(gpGeo,new THREE.ShadowMaterial({opacity:0.12,depthWrite:false}));
+  groundPlane.rotation.x=-Math.PI/2;groundPlane.receiveShadow=true;
+  scene.add(groundPlane);
+
+  // Axis markers
+  [[0xff5555,'x',1,0,0],[0x55ff55,'y',0,1,0],[0x5588ff,'z',0,0,1]].forEach(([c,_,x,y,z])=>{
+    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,.01,0),
+      new THREE.Vector3(x*1.5,y*1.5+.01,z*1.5)]);
+    scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:c})));
+  });
+
+  // Postprocessing
+  const w=innerWidth,h=innerHeight,pr=renderer.getPixelRatio();
+  composer=new EffectComposer(renderer);
+
+  renderPass=new RenderPass(scene,camera);
+  renderPass.enabled=false;
+  composer.addPass(renderPass);
+
+  ssaoPass=new SSAOPass(scene,camera,w,h);
+  ssaoPass.kernelRadius=16;ssaoPass.minDistance=0.005;ssaoPass.maxDistance=0.1;
+  ssaoPass.output=0;// Default composite
+  composer.addPass(ssaoPass);
+
+  fxaaPass=new ShaderPass(FXAAShader);
+  fxaaPass.material.uniforms.resolution.value.set(1/(w*pr),1/(h*pr));
+  composer.addPass(fxaaPass);
+
+  outputPass=new OutputPass();
+  composer.addPass(outputPass);
+
+  // Materials
+  normalMat=new THREE.MeshNormalMaterial({side:THREE.DoubleSide,flatShading:false});
+
+  window.addEventListener('resize',onResize);
+  setupUI();
+  animate();
+
+  // Auto-load interiorB
+  const btn=$('[data-id="interiorB"]');
+  if(btn)loadMesh(btn);
+}
+
+function onResize(){
+  const w=innerWidth,h=innerHeight,pr=renderer.getPixelRatio();
+  camera.aspect=w/h;camera.updateProjectionMatrix();
+  renderer.setSize(w,h);composer.setSize(w,h);
+  fxaaPass.material.uniforms.resolution.value.set(1/(w*pr),1/(h*pr));
+}
+
+function animate(){requestAnimationFrame(animate);controls.update();composer.render()}
+
+/* ═══════════════ CAMERA ═══════════════ */
+function fitCamera(target,radius){
+  const fov=camera.fov*Math.PI/180;
+  const dist=radius/(0.8*Math.tan(fov/2));// 80% screen fill
+  const dir=new THREE.Vector3(1,.65,1).normalize();
+  camera.position.copy(target).addScaledVector(dir,dist);
+  controls.target.copy(target);
+  camera.near=Math.max(0.005,radius*0.001);
+  camera.far=Math.max(2000,radius*20);
+  camera.updateProjectionMatrix();controls.update();
+}
+
+function smoothMove(endPos,endTarget,dur=600){
+  const sp=camera.position.clone(),st=controls.target.clone(),t0=performance.now();
+  (function step(t){
+    const p=Math.min((t-t0)/dur,1);
+    const e=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+    camera.position.lerpVectors(sp,endPos,e);
+    controls.target.lerpVectors(st,endTarget,e);
+    controls.update();
+    if(p<1)requestAnimationFrame(step);
+  })(t0);
+}
+
+function camPreset(v){
+  if(!mainMesh){toast('Load a mesh first');return}
+  const d=meshRadius*2.5/(0.8), c=meshRadius*.7;
+  let o;
+  switch(v){
+    case'front':   o=[0,0,d];break;
+    case'back':    o=[0,0,-d];break;
+    case'left':    o=[-d,0,0];break;
+    case'right':   o=[d,0,0];break;
+    case'top':     o=[0,d,.01];break;
+    case'bottom':  o=[0,-d,.01];break;
+    case'iso':     o=[d*.58,d*.58,d*.58];break;
+    case'bird':    o=[0,d*.9,d*.3];break;
+    case'closeup': o=[c*.5,c*.3,c];break;
+    case'45deg':   o=[d*.7,d*.4,d*.7];break;
+    case'fit':case'reset':fitCamera(meshCenter,meshRadius);toast('Fit to model');return;
+    default:return;
+  }
+  smoothMove(meshCenter.clone().add(new THREE.Vector3(...o)),meshCenter.clone());
+  toast('View: '+v);
+}
+
+/* ═══════════════ CLEAR ═══════════════ */
+function clearScene(){
+  [mainMesh,fragMesh,pointCloud,bboxHelper].forEach(o=>{
+    if(!o)return;scene.remove(o);
+    if(o.geometry&&!o.geometry._shared)o.geometry.dispose();
+    if(o.material)o.material.dispose();
+  });
+  mainMesh=fragMesh=pointCloud=bboxHelper=null;
+}
+
+/* ═══════════════ LOAD MESH ═══════════════ */
+function loadMesh(btn){
+  const path=btn.dataset.path, id=btn.dataset.id;
+  if(S.curPath===path)return;
+
+  $$('.mb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const ov=$('#load-ov');ov.classList.remove('hide');
+  $('#load-txt').textContent='Loading '+id+'...';
+  $('#load-bar').style.width='0%';$('#load-sub').textContent='';
+
+  clearScene();
+
+  new PLYLoader().load(BASE+path,
+    geo=>{
+      // Compute smooth normals
+      geo.computeVertexNormals();
+      const hasIdx=!!geo.index;
+      const hasCols=!!geo.attributes.color;
+
+      $('#load-sub').textContent='Analyzing connected components...';
+
+      // Cleanup — run async to let UI update
+      setTimeout(()=>{
+        let mainGeo=geo, fragGeo=null, info=null;
+
+        if(hasIdx){
+          info=analyzeComponents(geo);
+          if(info&&info.fragF.length>0){
+            mainGeo=filteredGeo(geo,info.mainF);
+            fragGeo=filteredGeo(geo,info.fragF);
+          }
+        }
+
+        // Compute bounding box of main
+        const box = computeTrueBox(mainGeo);
+        box.getCenter(meshCenter);
+        const sz=new THREE.Vector3();box.getSize(sz);
+        meshRadius=sz.length()/2;
+
+        // Clipping range
+        clipMin=box.min.y;clipMax=box.max.y;
+        const cs=$('#clip-slider');
+        cs.min=clipMin;cs.max=clipMax;cs.step=(clipMax-clipMin)/500;cs.value=clipMax;
+        clipPlane.constant=clipMax;$('#clip-val').textContent=clipMax.toFixed(2);
+
+        // Materials
+        const clipPlanes=S.clip?[clipPlane]:[];
+        stdMat=new THREE.MeshStandardMaterial({
+          vertexColors:hasCols&&S.vcol,
+          color:(hasCols&&S.vcol)?0xffffff:0x7799bb,
+          metalness:0.02,roughness:0.6,side:THREE.DoubleSide,
+          flatShading:false,clippingPlanes:clipPlanes,
+          clipShadows:true
+        });
+
+        // Main mesh
+        mainMesh=new THREE.Mesh(mainGeo,S.normals?normalMat.clone():stdMat);
+        mainMesh.castShadow=true;mainMesh.receiveShadow=true;
+        mainMesh.material.wireframe=S.wire;
+        mainMesh.visible=S.mesh;
+        mainMesh.frustumCulled=false;
+        scene.add(mainMesh);
+
+        // Fragment mesh
+        if(fragGeo){
+          const fm=stdMat.clone();fm.opacity=0.5;fm.transparent=true;
+          fragMesh=new THREE.Mesh(fragGeo,fm);
+          fragMesh.visible=S.frags;
+          fragMesh.frustumCulled=false;
+          scene.add(fragMesh);
+        }
+
+        // Point cloud
+        const ptMat=new THREE.PointsMaterial({
+          vertexColors:hasCols,size:0.015,sizeAttenuation:true,
+          clippingPlanes:clipPlanes
+        });
+        pointCloud=new THREE.Points(mainGeo,ptMat);
+        pointCloud.visible=S.points;
+        pointCloud.frustumCulled=false;
+        scene.add(pointCloud);
+
+        // Grid + ground
+        gridHelper.position.y=box.min.y-0.01;
+        groundPlane.position.y=box.min.y-0.02;
+
+        // BBox helper
+        bboxHelper=new THREE.Box3Helper(box,new THREE.Color(0x44aaff));
+        bboxHelper.visible=S.bbox;
+        scene.add(bboxHelper);
+
+        // SSAO params relative to mesh
+        ssaoPass.kernelRadius=Math.max(4,meshRadius*0.15);
+        ssaoPass.minDistance=meshRadius*0.0003;
+        ssaoPass.maxDistance=meshRadius*0.03;
+
+        // Fit camera — 80% fill
+        fitCamera(meshCenter,meshRadius);
+
+        // Update shadow camera
+        const s2=meshRadius*1.5;
+        keyLight.shadow.camera.left=-s2;keyLight.shadow.camera.right=s2;
+        keyLight.shadow.camera.top=s2;keyLight.shadow.camera.bottom=-s2;
+        keyLight.shadow.camera.far=meshRadius*5;
+        keyLight.shadow.camera.updateProjectionMatrix();
+        keyLight.target.position.copy(meshCenter);
+        keyLight.position.copy(meshCenter).add(new THREE.Vector3(meshRadius,meshRadius*1.5,meshRadius*.6));
+
+        // Stats
+        const mainV=mainGeo.attributes.position.count;
+        const mainF=mainGeo.index?mainGeo.index.count/3:mainV/3;
+        const fragFaces=fragGeo?(fragGeo.index?fragGeo.index.count/3:0):0;
+        const compStr=info?info.nComp.toLocaleString():'1';
+        const bigPct=info?(info.bigC/info.nF*100).toFixed(1):'100';
+        const removed=info?info.fragF.length:0;
+
+        $('#mesh-info').innerHTML=`<b>${id}</b> &middot; ${(mainF/1e6).toFixed(2)}M faces &middot; `+
+          `${compStr} components &middot; main ${bigPct}% &middot; `+
+          `<span style="color:var(--text3)">C:\\recon${path.replace(/\//g,'\\')}</span>`;
+
+        $('#stats').innerHTML=
+          `<b>Mesh:</b> ${id}<br>`+
+          `<b>File:</b> C:\\recon${path.replace(/\//g,'\\')}<br>`+
+          `<b>Vertices:</b> ${mainV.toLocaleString()}<br>`+
+          `<b>Faces (main):</b> ${Math.floor(mainF).toLocaleString()}<br>`+
+          `<b>Components:</b> ${compStr}<br>`+
+          `<b>Largest:</b> ${bigPct}%<br>`+
+          `<b>Fragments hidden:</b> ${removed.toLocaleString()} faces<br>`+
+          `<b>Vertex colors:</b> ${hasCols?'Yes':'No'}<br>`+
+          `<b>BBox extent:</b> ${sz.x.toFixed(1)} x ${sz.y.toFixed(1)} x ${sz.z.toFixed(1)}`;
+
+        S.curPath=path;S.curId=id;
+        ov.classList.add('hide');
+        toast('Loaded: '+id+' (cleaned)');
+
+        console.log('=== MESH LOADED ===');
+        console.log('File: C:\\recon'+path.replace(/\//g,'\\'));
+        console.log('Main faces:',Math.floor(mainF).toLocaleString());
+        console.log('Components:',compStr,'Largest:',bigPct+'%');
+        console.log('Fragments removed:',removed);
+      },50);
+    },
+    xhr=>{
+      if(xhr.lengthComputable){
+        const p=(xhr.loaded/xhr.total*100);
+        $('#load-bar').style.width=p.toFixed(0)+'%';
+        $('#load-txt').textContent=`Loading ${id}... ${p.toFixed(0)}%`;
+        $('#load-sub').textContent=`${(xhr.loaded/1e6).toFixed(1)} / ${(xhr.total/1e6).toFixed(1)} MB`;
+      }
+    },
+    err=>{
+      console.error(err);
+      ov.classList.add('hide');
+      toast('Error loading mesh — ensure server is running');
+    }
+  );
+}
+
+/* ═══════════════ TOGGLES ═══════════════ */
+function toggle(key){
+  S[key]=!S[key];
+  const btn=$(`[data-t="${key}"]`);
+  if(btn)btn.classList.toggle('on',S[key]);
+
+  switch(key){
+    case'mesh':  if(mainMesh)mainMesh.visible=S.mesh;break;
+    case'points':if(pointCloud)pointCloud.visible=S.points;break;
+    case'vcol':
+      if(mainMesh&&stdMat){
+        const hc=!!mainMesh.geometry.attributes.color;
+        stdMat.vertexColors=hc&&S.vcol;
+        stdMat.color.set((hc&&S.vcol)?0xffffff:0x7799bb);
+        stdMat.needsUpdate=true;
+        if(!S.normals)mainMesh.material=stdMat;
+      }break;
+    case'wire':
+      if(mainMesh)mainMesh.material.wireframe=S.wire;
+      if(fragMesh)fragMesh.material.wireframe=S.wire;break;
+    case'normals':
+      if(mainMesh){
+        if(S.normals){mainMesh.material=normalMat.clone();mainMesh.material.wireframe=S.wire;}
+        else{mainMesh.material=stdMat;mainMesh.material.wireframe=S.wire;}
+      }break;
+    case'bbox':  if(bboxHelper)bboxHelper.visible=S.bbox;break;
+    case'grid':  gridHelper.visible=S.grid;groundPlane.visible=S.grid;break;
+    case'frags': if(fragMesh)fragMesh.visible=S.frags;break;
+    case'lighting':
+      const on=S.lighting;
+      keyLight.intensity=on?1.2:0;fillLight.intensity=on?0.45:0;
+      rimLight.intensity=on?0.25:0;hemiLight.intensity=on?0.5:0;
+      ambLight.intensity=on?0.35:1.0;// flat ambient when lights off
+      break;
+    case'ssao':
+      ssaoPass.enabled=S.ssao;renderPass.enabled=!S.ssao;break;
+    case'fxaa':
+      fxaaPass.enabled=S.fxaa;break;
+    case'clip':
+      const cr=$('#clip-row');
+      cr.style.opacity=S.clip?'1':'0.4';
+      cr.style.pointerEvents=S.clip?'auto':'none';
+      updateClip();break;
+  }
+}
+
+function updateClip(){
+  const v=parseFloat($('#clip-slider').value);
+  clipPlane.constant=v;
+  $('#clip-val').textContent=v.toFixed(2);
+  const planes=S.clip?[clipPlane]:[];
+  if(stdMat)stdMat.clippingPlanes=planes;
+  if(mainMesh&&mainMesh.material!==stdMat)mainMesh.material.clippingPlanes=planes;
+  if(pointCloud)pointCloud.material.clippingPlanes=planes;
+  if(fragMesh)fragMesh.material.clippingPlanes=planes;
+}
+
+/* ═══════════════ UI WIRING ═══════════════ */
+function setupUI(){
+  // Mesh buttons
+  $$('.mb').forEach(b=>b.addEventListener('click',()=>loadMesh(b)));
+
+  // Camera presets
+  $$('.pb').forEach(b=>b.addEventListener('click',()=>camPreset(b.dataset.v)));
+
+  // Toggles
+  $$('.tb').forEach(b=>b.addEventListener('click',()=>toggle(b.dataset.t)));
+
+  // Clip slider
+  $('#clip-slider').addEventListener('input',updateClip);
+
+  // Background
+  $$('.bg-swatch').forEach(sw=>sw.addEventListener('click',()=>{
+    $$('.bg-swatch').forEach(s=>s.classList.remove('active'));
+    sw.classList.add('active');
+    const v=sw.dataset.bg;
+    if(v==='gradient')scene.background=gradBg('#1a2035','#080c14');
+    else scene.background=new THREE.Color(v);
+  }));
+
+  // Fullscreen
+  $('#fs-btn').addEventListener('click',()=>{
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});
+    else document.exitFullscreen().catch(()=>{});
+  });
+}
+
+init();
+</script>
+</body>
+</html>

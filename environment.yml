@@ -1,0 +1,29 @@
+name: recon
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch=2.1.2
+  - torchvision=0.16.2
+  - torchaudio=2.1.2
+  - pytorch-cuda=12.1
+  - pip
+  - pip:
+    - numpy==1.26.4
+    - ninja
+    - py360convert
+    - opencv-python
+    - open3d>=0.18.0
+    - scipy
+    - networkx
+    - matplotlib
+    - tqdm
+    - plyfile
+    - trimesh
+    - paho-mqtt
+    - fpsample
+    - huggingface_hub
+    - scikit-image

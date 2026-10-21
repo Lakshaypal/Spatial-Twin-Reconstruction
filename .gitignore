@@ -1,0 +1,89 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.so
+*.dll
+
+# C/C++ / MSVC Build Artefacts
+*.obj
+*.o
+*.lib
+*.exp
+*.pdb
+*.ilk
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Conda & Virtual Environments
+.conda/
+venv/
+env/
+ENV/
+*.env
+
+# COLMAP dense workspaces & databases
+*.db
+*.db-shm
+*.db-wal
+dense/
+sparse/
+run_dense/
+fusion_list.txt
+stereo/
+
+# Large Datasets & Raw Video Footage (Exceeded GitHub 100MB limit)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.zip
+*.tar.gz
+*.7z
+
+# Large Heavy Point Clouds & Meshes (>100MB)
+*.dense.ply
+fused.ply
+meshed-poisson.ply
+mesh_final.ply
+mesh_final.obj
+mesh_final.glb
+*.blend
+*.blend1
+
+# Unity Generated Cache & Project Artifacts
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+*.csproj
+*.unityproj
+*.sln
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+CrashDumps/
+dumps/
+*.tmp
+*.log
+
+# Credentials and local configuration
+.env
+.env.*
+*.pem
+*.key
+secrets/

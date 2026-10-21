@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mesh Comparison — Evidence-Based Split-Screen</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0b1120;color:#e2e8f0;font-family:'Inter',sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+#header{padding:10px 20px;background:rgba(13,20,38,0.95);border-bottom:1px solid rgba(100,140,200,0.2);display:flex;justify-content:space-between;align-items:center;z-index:100}
+#header b{font-size:16px}
+.controls{display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:rgba(59,130,246,0.15);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;transition:all 0.2s}
+.btn:hover{background:rgba(59,130,246,0.3);color:#fff}
+.btn.active{background:rgba(59,130,246,0.5);color:#fff;border-color:#3b82f6}
+#container{display:flex;flex:1;position:relative}
+.viewport{flex:1;position:relative;background:#0b1120}
+.viewport+.viewport{border-left:2px solid rgba(100,140,200,0.15)}
+.label{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.7);padding:6px 12px;border-radius:6px;font-weight:600;font-size:13px;pointer-events:none;z-index:10;backdrop-filter:blur(8px)}
+.label .sub{font-weight:400;font-size:10px;color:#94a3b8;display:block;margin-top:2px}
+#loading{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:200;display:flex;flex-direction:column;justify-content:center;align-items:center;font-size:18px;font-weight:600;gap:12px}
+.spinner{width:40px;height:40px;border:3px solid rgba(59,130,246,0.2);border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#stats{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);padding:6px 16px;border-radius:6px;font-size:11px;color:#94a3b8;z-index:100;backdrop-filter:blur(8px)}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="header">
+  <b>Evidence-Based Mesh Comparison</b>
+  <div class="controls">
+    <button class="btn" id="btnWire">Wireframe</button>
+    <button class="btn" id="btnOverlay">Overlay</button>
+    <button class="btn" id="btnNormals">Normal Shading</button>
+  </div>
+</div>
+<div id="container">
+  <div id="view1" class="viewport">
+    <div class="label">Original Mesh<span class="sub" id="info1">Loading...</span></div>
+  </div>
+  <div id="view2" class="viewport">
+    <div class="label">Color-Restored Mesh<span class="sub" id="info2">Loading...</span></div>
+  </div>
+  <div id="loading"><div class="spinner"></div>Loading meshes...</div>
+</div>
+<div id="stats"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
+let scene1, scene2, camera1, camera2, renderer1, renderer2, controls1, controls2;
+let mesh1, mesh2;
+let isOverlay = false;
+let isNormalView = false;
+let origMat1, origMat2;
+
+function init() {
+  const v1 = document.getElementById('view1');
+  const v2 = document.getElementById('view2');
+
+  // Renderers with proper color management
+  renderer1 = new THREE.WebGLRenderer({antialias:true});
+  renderer1.setPixelRatio(window.devicePixelRatio);
+  renderer1.setSize(v1.clientWidth, v1.clientHeight);
+  renderer1.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer1.toneMappingExposure = 1.2;
+  renderer1.outputColorSpace = THREE.SRGBColorSpace;
+  v1.appendChild(renderer1.domElement);
+
+  renderer2 = new THREE.WebGLRenderer({antialias:true});
+  renderer2.setPixelRatio(window.devicePixelRatio);
+  renderer2.setSize(v2.clientWidth, v2.clientHeight);
+  renderer2.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer2.toneMappingExposure = 1.2;
+  renderer2.outputColorSpace = THREE.SRGBColorSpace;
+  v2.appendChild(renderer2.domElement);
+
+  // Scenes
+  scene1 = new THREE.Scene();
+  scene2 = new THREE.Scene();
+
+  // Cameras
+  camera1 = new THREE.PerspectiveCamera(60, v1.clientWidth/v1.clientHeight, 0.01, 10000);
+  camera1.position.set(0, 10, 20);
+  camera2 = new THREE.PerspectiveCamera(60, v2.clientWidth/v2.clientHeight, 0.01, 10000);
+  camera2.position.set(0, 10, 20);
+
+  // Controls
+  controls1 = new OrbitControls(camera1, renderer1.domElement);
+  controls1.enableDamping = true;
+  controls2 = new OrbitControls(camera2, renderer2.domElement);
+  controls2.enableDamping = true;
+
+  // Lighting (3-point + ambient)
+  function addLights(scene) {
+    const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(5, 10, 7); scene.add(key);
+    const fill = new THREE.DirectionalLight(0xb4c6e7, 1.0); fill.position.set(-5, 3, -5); scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.6); rim.position.set(0, -5, 10); scene.add(rim);
+    const amb = new THREE.AmbientLight(0xffffff, 0.5); scene.add(amb);
+  }
+  addLights(scene1);
+  addLights(scene2);
+
+  // Sync cameras
+  let syncing = false;
+  controls1.addEventListener('change', () => {
+    if(isOverlay || syncing) return;
+    syncing = true;
+    camera2.position.copy(camera1.position);
+    camera2.quaternion.copy(camera1.quaternion);
+    controls2.target.copy(controls1.target);
+    controls2.update();
+    syncing = false;
+  });
+  controls2.addEventListener('change', () => {
+    if(isOverlay || syncing) return;
+    syncing = true;
+    camera1.position.copy(camera2.position);
+    camera1.quaternion.copy(camera2.quaternion);
+    controls1.target.copy(controls2.target);
+    controls1.update();
+    syncing = false;
+  });
+
+  window.addEventListener('resize', onResize);
+  loadMeshes();
+  animate();
+}
+
+function createMaterial(geo) {
+  const hasCols = geo.hasAttribute('color');
+  return new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    vertexColors: hasCols,
+    side: THREE.DoubleSide,
+    roughness: 0.65,
+    metalness: 0.0
+  });
+}
+
+function loadMeshes() {
+  const loader = new PLYLoader();
+  const origPath = '/chunks/lab/mesh_lab.ply';
+  // Try textured OBJ first, fall back to colored PLY
+  const coloredPlyPath = '/reconstruction_v2/mesh_final_vtxcolor.ply';
+  const objPath = '/reconstruction_v2/mesh_final.obj';
+
+  let loaded = 0;
+  function checkDone() {
+    loaded++;
+    if(loaded >= 2) {
+      document.getElementById('loading').style.display = 'none';
+      // Auto-frame on mesh1
+      if(mesh1 && mesh1.geometry) {
+        mesh1.geometry.computeBoundingSphere();
+        const c = mesh1.geometry.boundingSphere.center;
+        const r = mesh1.geometry.boundingSphere.radius;
+        controls1.target.copy(c);
+        camera1.position.set(c.x + r*0.8, c.y + r*0.6, c.z + r*1.2);
+        controls1.update();
+      }
+    }
+  }
+
+  // Load original
+  loader.load(origPath, (geo) => {
+    geo.computeVertexNormals();
+    origMat1 = createMaterial(geo);
+    mesh1 = new THREE.Mesh(geo, origMat1);
+    mesh1.frustumCulled = false;
+    scene1.add(mesh1);
+    document.getElementById('info1').textContent = 
+      `${(geo.attributes.position.count).toLocaleString()} verts | ${geo.index ? (geo.index.count/3).toLocaleString() : 'N/A'} faces`;
+    checkDone();
+  }, undefined, (e) => { console.error("Mesh1 load error", e); checkDone(); });
+
+  // Try OBJ first
+  fetch(objPath, {method:'HEAD'}).then(r => {
+    if(r.ok) {
+      // OBJ exists, load with MTL
+      const mtlLoader = new MTLLoader();
+      mtlLoader.setPath('/reconstruction_v2/');
+      mtlLoader.load('mesh_final.mtl', (materials) => {
+        materials.preload();
+        const objLoader = new OBJLoader();
+        objLoader.setMaterials(materials);
+        objLoader.load(objPath, (obj) => {
+          mesh2 = obj;
+          mesh2.traverse(child => { if(child.isMesh) child.frustumCulled = false; });
+          scene2.add(mesh2);
+          document.getElementById('info2').textContent = 'Textured OBJ (UV-mapped)';
+          checkDone();
+        }, undefined, () => loadFallbackPly(checkDone));
+      }, undefined, () => loadFallbackPly(checkDone));
+    } else {
+      loadFallbackPly(checkDone);
+    }
+  }).catch(() => loadFallbackPly(checkDone));
+
+  function loadFallbackPly(cb) {
+    loader.load(coloredPlyPath, (geo) => {
+      geo.computeVertexNormals();
+      origMat2 = createMaterial(geo);
+      mesh2 = new THREE.Mesh(geo, origMat2);
+      mesh2.frustumCulled = false;
+      scene2.add(mesh2);
+      document.getElementById('info2').textContent = 
+        `${(geo.attributes.position.count).toLocaleString()} verts | Color-restored (KD-tree)`;
+      cb();
+    }, undefined, (e) => { console.error("Mesh2 load error", e); cb(); });
+  }
+}
+
+function onResize() {
+  const v1 = document.getElementById('view1');
+  const v2 = document.getElementById('view2');
+  camera1.aspect = v1.clientWidth/v1.clientHeight; camera1.updateProjectionMatrix();
+  renderer1.setSize(v1.clientWidth, v1.clientHeight);
+  if(!isOverlay) {
+    camera2.aspect = v2.clientWidth/v2.clientHeight; camera2.updateProjectionMatrix();
+    renderer2.setSize(v2.clientWidth, v2.clientHeight);
+  }
+}
+
+// Button handlers
+document.getElementById('btnWire').addEventListener('click', function() {
+  this.classList.toggle('active');
+  function setWire(m, val) {
+    if(!m) return;
+    if(m.isMesh) m.material.wireframe = val;
+    if(m.children) m.children.forEach(c => { if(c.isMesh) c.material.wireframe = val; });
+  }
+  const on = this.classList.contains('active');
+  setWire(mesh1, on);
+  setWire(mesh2, on);
+});
+
+document.getElementById('btnOverlay').addEventListener('click', function() {
+  this.classList.toggle('active');
+  isOverlay = this.classList.contains('active');
+  const v2 = document.getElementById('view2');
+  if(isOverlay) {
+    v2.style.display = 'none';
+    if(mesh2) scene1.add(mesh2);
+    setOverlayColors(true);
+  } else {
+    v2.style.display = 'block';
+    if(mesh2) scene2.add(mesh2);
+    setOverlayColors(false);
+  }
+  onResize();
+});
+
+document.getElementById('btnNormals').addEventListener('click', function() {
+  this.classList.toggle('active');
+  isNormalView = this.classList.contains('active');
+  const normalMat = new THREE.MeshNormalMaterial({side: THREE.DoubleSide});
+  function applyMat(m, mat) {
+    if(!m) return;
+    if(m.isMesh) m.material = mat;
+    if(m.children) m.children.forEach(c => { if(c.isMesh) c.material = mat; });
+  }
+  if(isNormalView) {
+    applyMat(mesh1, normalMat);
+    applyMat(mesh2, normalMat.clone());
+  } else {
+    if(origMat1) applyMat(mesh1, origMat1);
+    if(origMat2) applyMat(mesh2, origMat2);
+  }
+});
+
+function setOverlayColors(on) {
+  function setMat(m, color, opacity) {
+    if(!m) return;
+    const apply = (mesh) => {
+      if(!mesh.isMesh) return;
+      mesh.material.transparent = on;
+      mesh.material.opacity = on ? opacity : 1.0;
+      if(on) { mesh.material.color.setHex(color); mesh.material.vertexColors = false; }
+      else { mesh.material.color.setHex(0xffffff); mesh.material.vertexColors = mesh.geometry.hasAttribute('color'); }
+      mesh.material.needsUpdate = true;
+    };
+    if(m.isMesh) apply(m);
+    if(m.children) m.children.forEach(apply);
+  }
+  setMat(mesh1, 0xff4444, 0.5);
+  setMat(mesh2, 0x44ff44, 0.5);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls1.update();
+  controls2.update();
+  renderer1.render(scene1, camera1);
+  if(!isOverlay) renderer2.render(scene2, camera2);
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
